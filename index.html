@@ -93,7 +93,8 @@ var FIREBASE_CONFIG = {
 };
 var ADMIN_EMAILS = ["mirwaisa@usc.edu", "singhm@usc.edu"]; // Academic Affairs admins
 var ALLOWED_DOMAIN = "usc.edu"; // only USC Google accounts may sign in
-var ACADEMIC_YEAR = "2026-27";
+var DEFAULT_YEAR = "2026-27";
+function nextYear(y){ var a = parseInt(y.slice(0,4),10)+1; return a + "-" + String(a+1).slice(2); }
 
 var DEMO_MODE = FIREBASE_CONFIG.apiKey.indexOf("PASTE") === 0;
 
@@ -177,7 +178,7 @@ function seedData(){
   var now = Date.now();
   function mk(i, o){
     return Object.assign({
-      id:"demo"+i, academicYear:ACADEMIC_YEAR, createdAt: now - i*86400000, updatedAt: now - i*43200000,
+      id:"demo"+i, academicYear:DEFAULT_YEAR, createdAt: now - i*86400000, updatedAt: now - i*43200000,
       submitterName:"", submitterEmail:"", role:"Course Lead", program:"MSW",
       proposalType:"Course", changeType:"Revision", revisionScope:"Minor",
       proposedTitle:"", courseNumber:"", courseTitle:"",
@@ -200,9 +201,13 @@ var DB = (function(){
   if (DEMO_MODE){
     var rows = seedData();
     var listeners = [];
+    var cfg = {years:[DEFAULT_YEAR], activeYear:DEFAULT_YEAR};
+    var cfgListeners = [];
     function notify(){ listeners.forEach(function(fn){ fn(rows.slice()); }); }
     return {
       demo:true,
+      subscribeConfig:function(fn){ cfgListeners.push(fn); fn(Object.assign({},cfg)); return function(){ cfgListeners = cfgListeners.filter(function(x){return x!==fn;}); }; },
+      saveConfig:function(c){ cfg = Object.assign({},c); cfgListeners.forEach(function(fn){ fn(Object.assign({},cfg)); }); return Promise.resolve(); },
       subscribe:function(fn){ listeners.push(fn); fn(rows.slice()); return function(){ listeners = listeners.filter(function(x){return x!==fn;}); }; },
       save:function(p){
         if(!p.id){ p.id = "p" + Date.now() + Math.floor(Math.random()*1000); p.createdAt = Date.now(); }
@@ -220,6 +225,13 @@ var DB = (function(){
   var col = fs.collection("proposals");
   return {
     demo:false,
+    subscribeConfig:function(fn){
+      return fs.collection("config").doc("app").onSnapshot(function(doc){
+        var d = doc.exists ? doc.data() : null;
+        fn(d && d.years && d.years.length ? d : {years:[DEFAULT_YEAR], activeYear:DEFAULT_YEAR});
+      }, function(err){ console.error(err); fn({years:[DEFAULT_YEAR], activeYear:DEFAULT_YEAR}); });
+    },
+    saveConfig:function(c){ return fs.collection("config").doc("app").set(c); },
     subscribe:function(fn){
       return col.orderBy("updatedAt","desc").onSnapshot(function(snap){
         var rows = [];
@@ -242,19 +254,19 @@ function fmtDate(ts){ if(!ts) return ""; var d = new Date(ts); return (d.getMont
 function esc(s){ return (s==null?"":String(s)); }
 
 /* ---------- CSV EXPORT (matches Academic Affairs intake columns) ---------- */
-function exportCSV(rows){
-  var head = ["Name","Email","Role","Program","Proposal Type","Course Number","Course/Proposal Title","New or Revision","If Revision: Minor or Major","If New: Proposed Title","Async Update "+ACADEMIC_YEAR+"?","Async Target Semester","Curric Council Review?","University Review?","Status","Description of Proposal/Revisions","Description of Async Changes & Support Needed","Rationale","Submitted","Last Updated"];
+function exportCSV(rows, label){
+  var head = ["Academic Year","Name","Email","Role","Program","Proposal Type","Course Number","Course/Proposal Title","New or Revision","If Revision: Minor or Major","If New: Proposed Title","Async Update?","Async Target Semester","Curric Council Review?","University Review?","Status","Description of Proposal/Revisions","Description of Async Changes & Support Needed","Rationale","Submitted","Last Updated"];
   function q(v){ v = esc(v).replace(/"/g,'""'); return '"'+v+'"'; }
   var lines = [head.map(q).join(",")];
   rows.forEach(function(p){
     var r = computeRoute(p);
     function yn(v){ return v==="yes"?"Yes":(v==="no"?"No":"AA to confirm"); }
-    lines.push([p.submitterName,p.submitterEmail,p.role,p.program,p.proposalType,p.courseNumber,p.courseTitle||p.proposedTitle,p.changeType,p.revisionScope,p.proposedTitle,p.asyncUpdate,p.asyncSemester,yn(r.council),yn(r.university),statusOf(p.status).label,p.description,(esc(p.asyncDescription)+(p.asyncSupport?" | Support: "+p.asyncSupport:"")),p.rationale,fmtDate(p.createdAt),fmtDate(p.updatedAt)].map(q).join(","));
+    lines.push([p.academicYear,p.submitterName,p.submitterEmail,p.role,p.program,p.proposalType,p.courseNumber,p.courseTitle||p.proposedTitle,p.changeType,p.revisionScope,p.proposedTitle,p.asyncUpdate,p.asyncSemester,yn(r.council),yn(r.university),statusOf(p.status).label,p.description,(esc(p.asyncDescription)+(p.asyncSupport?" | Support: "+p.asyncSupport:"")),p.rationale,fmtDate(p.createdAt),fmtDate(p.updatedAt)].map(q).join(","));
   });
   var blob = new Blob(["\uFEFF"+lines.join("\r\n")], {type:"text/csv;charset=utf-8"});
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "SDPSSW_Curriculum_Proposals_"+ACADEMIC_YEAR.replace("/","-")+".csv";
+  a.download = "SDPSSW_Curriculum_Proposals_"+(label||"All_Years").replace(/[^0-9A-Za-z_-]/g,"-")+".csv";
   a.click();
 }
 
@@ -266,7 +278,7 @@ function printProposal(p){
   var w = window.open("","_blank","width=900,height=700");
   w.document.write("<html><head><title>Curriculum Proposal \u2014 "+esc(p.courseNumber||p.proposedTitle||p.proposalType)+"</title>"+
     "<style>body{font-family:Arial,sans-serif;color:#222;padding:30px;font-size:13px}h1{color:#990000;font-size:20px;margin-bottom:2px}h2{font-size:13px;color:#666;font-weight:400;margin-bottom:18px}table{border-collapse:collapse;width:100%}</style></head><body>"+
-    "<h1>USC Suzanne Dworak-Peck School of Social Work</h1><h2>Academic Affairs \u2014 Curriculum Change Proposal \u2022 AY "+ACADEMIC_YEAR+"</h2><table>"+
+    "<h1>USC Suzanne Dworak-Peck School of Social Work</h1><h2>Academic Affairs \u2014 Curriculum Change Proposal \u2022 AY "+esc(p.academicYear)+"</h2><table>"+
     row("Status", statusOf(p.status).label)+
     row("Submitted by", esc(p.submitterName)+" ("+esc(p.submitterEmail)+")")+
     row("Role", p.role)+ row("Program", p.program)+ row("Proposal type", p.proposalType)+
@@ -338,7 +350,7 @@ function LoginScreen(props){
       h("div",{style:{fontSize:17,fontWeight:800,letterSpacing:3,color:"#990000",marginBottom:10}},"USC SUZANNE DWORAK-PECK"),
       h("div",{style:{fontSize:15,color:"#777",letterSpacing:2,marginBottom:26}},"SCHOOL OF SOCIAL WORK \u2022 ACADEMIC AFFAIRS"),
       h("h1",{style:{fontSize:42,fontWeight:900,color:"#990000",lineHeight:1.15,marginBottom:12}},"Curriculum Change Proposal Portal"),
-      h("p",{style:{fontSize:19,color:"#444",marginBottom:8}},"Submit and track course, certificate, and program proposals for AY "+ACADEMIC_YEAR+"."),
+      h("p",{style:{fontSize:19,color:"#444",marginBottom:8}},"Submit and track course, certificate, and program proposals."),
       h("p",{style:{fontSize:14.5,color:"#999",fontStyle:"italic",marginBottom:30}},"Replaces the shared intake spreadsheet \u2022 Feeds Curriculum Council & Curriculog submissions"),
       h("div",{style:{height:3,background:"#FFCC00",width:90,margin:"0 auto 28px",borderRadius:2}}),
       h("button",{className:"btn btn-primary",style:{padding:"16px 44px",fontSize:18},onClick:doLogin}, DEMO_MODE ? "Preview the App" : "Sign in with USC Google"),
@@ -351,7 +363,7 @@ function LoginScreen(props){
 function Header(props){
   return h("div",{className:"no-print",style:{background:"#990000",color:"#fff",padding:"13px 22px",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
     h("div",{style:{fontWeight:900,fontSize:18}},"Curriculum Change Proposal Portal"),
-    h("div",{style:{fontSize:13.5,opacity:.85}},"SDPSSW Academic Affairs \u2022 AY "+ACADEMIC_YEAR),
+    h("div",{style:{fontSize:13.5,opacity:.85}},"SDPSSW Academic Affairs"),
     h("div",{style:{flex:1}}),
     isAdmin(props.user) ? h("span",{className:"badge",style:{background:"#FFCC00",color:"#3a2f00"}},"ADMIN") : null,
     h("div",{style:{fontSize:13}}, props.user.displayName || props.user.email),
@@ -359,9 +371,9 @@ function Header(props){
   );
 }
 /* ---------- PROPOSAL WIZARD ---------- */
-function blankProposal(user){
+function blankProposal(user, year){
   return {
-    academicYear:ACADEMIC_YEAR, status:"draft",
+    academicYear: year || DEFAULT_YEAR, status:"draft",
     submitterName:user.displayName||"", submitterEmail:user.email||"", submitterUid:user.uid,
     role:"", program:"", proposalType:"", changeType:"", revisionScope:"",
     courseNumber:"", courseTitle:"", proposedTitle:"",
@@ -573,13 +585,17 @@ function Dashboard(props){
   var fStatSt = React.useState(""); var fStat = fStatSt[0], setFStat = fStatSt[1];
   var fTypeSt = React.useState(""); var fType = fTypeSt[0], setFType = fTypeSt[1];
   var qSt = React.useState(""); var q = qSt[0], setQ = qSt[1];
+  var cfgSt = React.useState({years:[DEFAULT_YEAR], activeYear:DEFAULT_YEAR}); var cfg = cfgSt[0], setCfg = cfgSt[1];
+  var fYearSt = React.useState(""); var fYear = fYearSt[0], setFYear = fYearSt[1];
   var wizSt = React.useState(null); var wiz = wizSt[0], setWiz = wizSt[1];
   var detSt = React.useState(null); var det = detSt[0], setDet = detSt[1];
 
   React.useEffect(function(){ return DB.subscribe(setRows); }, []);
+  React.useEffect(function(){ return DB.subscribeConfig(function(c){ setCfg(c); setFYear(function(prev){ return prev===""? c.activeYear : prev; }); }); }, []);
+  var yearRows = rows.filter(function(r){ return fYear==="__all" || (r.academicYear||DEFAULT_YEAR)===fYear || fYear===""; });
 
-  var mine = rows.filter(function(r){ return r.submitterEmail === user.email; });
-  var base = (view==="mine") ? mine : rows;
+  var mine = yearRows.filter(function(r){ return r.submitterEmail === user.email; });
+  var base = (view==="mine") ? mine : yearRows;
   var visible = base.filter(function(r){
     if (!admin && view==="all" && r.status==="draft" && r.submitterEmail!==user.email) return false;
     if (fProg && r.program!==fProg) return false;
@@ -596,19 +612,34 @@ function Dashboard(props){
   var detLive = det ? rows.filter(function(r){return r.id===det;})[0] : null;
 
   var stats = [
-    {t:"Total Proposals", n:rows.filter(function(r){return r.status!=="draft";}).length},
-    {t:"Awaiting AA Review", n:rows.filter(function(r){return r.status==="submitted"||r.status==="aa_review";}).length},
-    {t:"In Governance", n:rows.filter(function(r){return r.status==="curric_council"||r.status==="university_review";}).length},
-    {t:"In Async Production", n:rows.filter(function(r){return r.status==="in_production";}).length},
-    {t:"Approved / Implemented", n:rows.filter(function(r){return r.status==="approved"||r.status==="implemented";}).length}
+    {t:"Total Proposals", n:yearRows.filter(function(r){return r.status!=="draft";}).length},
+    {t:"Awaiting AA Review", n:yearRows.filter(function(r){return r.status==="submitted"||r.status==="aa_review";}).length},
+    {t:"In Governance", n:yearRows.filter(function(r){return r.status==="curric_council"||r.status==="university_review";}).length},
+    {t:"In Async Production", n:yearRows.filter(function(r){return r.status==="in_production";}).length},
+    {t:"Approved / Implemented", n:yearRows.filter(function(r){return r.status==="approved"||r.status==="implemented";}).length}
   ];
 
+  function createNextYear(){
+    var last = cfg.years[cfg.years.length-1];
+    var ny = nextYear(last);
+    if (cfg.years.indexOf(ny) >= 0){ alert(ny+" already exists."); return; }
+    var makeActive = confirm("Create Academic Year "+ny+"?\n\nClick OK to also make it the active year (new proposals will be filed under "+ny+"). Click Cancel to create it without changing the active year.");
+    var nc = {years: cfg.years.concat([ny]), activeYear: makeActive ? ny : cfg.activeYear};
+    DB.saveConfig(nc).then(function(){ if(makeActive) setFYear(ny); });
+  }
+  function setActiveYear(y){
+    if (y === cfg.activeYear) return;
+    if (!confirm("Make "+y+" the active year? New proposals will be filed under "+y+".")) return;
+    DB.saveConfig({years:cfg.years, activeYear:y});
+  }
   return h("div",{style:{maxWidth:1180,margin:"0 auto",padding:"24px 20px 60px"}},
     h("div",{style:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",marginBottom:18}},
       h("h1",{style:{fontSize:24,fontWeight:900,color:"#222"}}, admin ? "Academic Affairs Dashboard" : "My Curriculum Proposals"),
+      h("span",{className:"badge",style:{background:"#990000",color:"#fff",fontSize:13}},"Active Year: "+cfg.activeYear),
       h("div",{style:{flex:1}}),
-      admin ? h("button",{className:"btn btn-secondary",onClick:function(){exportCSV(rows.filter(function(r){return r.status!=="draft";}));}},"Export CSV") : null,
-      h("button",{className:"btn btn-primary",onClick:function(){setWiz(blankProposal(user));}},"+ New Proposal")
+      admin ? h("button",{className:"btn btn-ghost",onClick:createNextYear},"+ Create AY "+nextYear(cfg.years[cfg.years.length-1])) : null,
+      admin ? h("button",{className:"btn btn-secondary",onClick:function(){exportCSV(yearRows.filter(function(r){return r.status!=="draft";}), fYear==="__all" ? "All_Years" : fYear);}},"Export CSV") : null,
+      h("button",{className:"btn btn-primary",onClick:function(){setWiz(blankProposal(user, cfg.activeYear));}},"+ New Proposal")
     ),
 
     admin ? h("div",{style:{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}},
@@ -621,12 +652,19 @@ function Dashboard(props){
     ) : null,
 
     h("div",{className:"filters"},
+      h("select",{value:fYear,onChange:function(e){setFYear(e.target.value);},style:{fontWeight:700,color:"#990000"}},
+        cfg.years.map(function(y){ return h("option",{key:y,value:y},"AY "+y+(y===cfg.activeYear?" (active)":"")); }),
+        h("option",{value:"__all"},"All Years")),
       h("input",{placeholder:"Search course, title, name\u2026",value:q,onChange:function(e){setQ(e.target.value);}}),
       h("select",{value:fProg,onChange:function(e){setFProg(e.target.value);}}, h("option",{value:""},"All Programs"), PROGRAMS.map(function(o){return h("option",{key:o,value:o},o);})),
       h("select",{value:fType,onChange:function(e){setFType(e.target.value);}}, h("option",{value:""},"All Types"), PROPOSAL_TYPES.map(function(o){return h("option",{key:o,value:o},o);})),
       h("select",{value:fStat,onChange:function(e){setFStat(e.target.value);}}, h("option",{value:""},"All Statuses"), STATUSES.map(function(s){return h("option",{key:s.id,value:s.id},s.label);}))
     ),
 
+    admin && fYear!=="__all" && fYear!==cfg.activeYear && fYear!=="" ? h("div",{style:{background:"#fff8e6",border:"1px solid #f0d98a",borderRadius:10,padding:"10px 16px",marginBottom:14,fontSize:14.5,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}},
+      h("span",null,"You are viewing AY "+fYear+". New proposals are currently filed under AY "+cfg.activeYear+"."),
+      h("button",{className:"btn btn-secondary",style:{padding:"6px 14px",fontSize:13.5},onClick:function(){setActiveYear(fYear);}},"Make "+fYear+" Active")
+    ) : null,
     visible.length===0 ? h("div",{className:"card",style:{textAlign:"center",padding:48,color:"#999"}},
       h("div",{style:{fontSize:16,fontWeight:700,marginBottom:6}},"No proposals here yet"),
       h("div",{style:{fontSize:13.5}},"Start a new proposal \u2014 it takes about five minutes and saves as a draft at any point.")
@@ -634,7 +672,7 @@ function Dashboard(props){
       h("table",{className:"tbl"},
         h("thead",null,h("tr",null,
           h("th",null,"Course / Proposal"), h("th",null,"Program"), h("th",null,"Type"),
-          h("th",null,"Change"), admin?h("th",null,"Submitter"):null, h("th",null,"Async"),
+          h("th",null,"Change"), admin?h("th",null,"Submitter"):null, h("th",null,"Year"), h("th",null,"Async"),
           h("th",null,"Status"), h("th",null,"Updated"))),
         h("tbody",null, visible.map(function(r){
           var prod = r.production||{}; var pd = PRODUCTION_STEPS.filter(function(s){return prod[s.id];}).length;
@@ -644,6 +682,7 @@ function Dashboard(props){
             h("td",null,r.proposalType),
             h("td",null, r.changeType + (r.revisionScope? " \u00B7 "+r.revisionScope.split(" ")[0]:"")),
             admin?h("td",null,r.submitterName):null,
+            h("td",{style:{whiteSpace:"nowrap"}}, r.academicYear||DEFAULT_YEAR),
             h("td",null, r.asyncUpdate==="Yes" ? (pd>0 ? pd+"/"+PRODUCTION_STEPS.length : "Yes") : (r.asyncUpdate||"\u2014")),
             h("td",null,h(Badge,{status:r.status})),
             h("td",{style:{color:"#999",fontSize:12.5}},fmtDate(r.updatedAt))
