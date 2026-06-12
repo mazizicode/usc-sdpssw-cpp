@@ -11,12 +11,12 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 <style>*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Source Sans 3',Arial,sans-serif;background:#faf8f5;color:#222;font-size:15px;line-height:1.5}
+body{font-family:'Source Sans 3',Arial,sans-serif;background:#faf8f5;color:#222;font-size:17px;line-height:1.55}
 button{font-family:inherit;cursor:pointer}
-input,select,textarea{font-family:inherit;font-size:14px;padding:9px 12px;border:1px solid #d5cfc6;border-radius:8px;width:100%;background:#fff;color:#222}
+input,select,textarea{font-family:inherit;font-size:16px;padding:9px 12px;border:1px solid #d5cfc6;border-radius:8px;width:100%;background:#fff;color:#222}
 input:focus,select:focus,textarea:focus{outline:2px solid #990000;outline-offset:1px;border-color:#990000}
 textarea{resize:vertical;min-height:90px}
-.btn{padding:10px 22px;border-radius:9px;border:none;font-weight:600;font-size:14px;transition:all .15s}
+.btn{padding:12px 26px;border-radius:9px;border:none;font-weight:600;font-size:16px;transition:all .15s}
 .btn-primary{background:#990000;color:#fff}
 .btn-primary:hover{background:#7a0000}
 .btn-secondary{background:#fff;color:#990000;border:1.5px solid #990000}
@@ -27,11 +27,11 @@ textarea{resize:vertical;min-height:90px}
 .btn-gold:hover{background:#eebf00}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .card{background:#fff;border:1px solid #e8e2d9;border-radius:14px;padding:22px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.lbl{display:block;font-weight:600;font-size:13px;color:#444;margin:14px 0 5px}
+.lbl{display:block;font-weight:600;font-size:15px;color:#444;margin:14px 0 5px}
 .lbl .req{color:#990000}
-.hint{font-size:12px;color:#888;margin-top:3px}
+.hint{font-size:13.5px;color:#888;margin-top:3px}
 .badge{display:inline-block;padding:3px 11px;border-radius:99px;font-size:11.5px;font-weight:700;letter-spacing:.3px;white-space:nowrap}
-.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl{width:100%;border-collapse:collapse;font-size:15px}
 .tbl th{text-align:left;padding:10px 12px;background:#990000;color:#fff;font-weight:600;font-size:12px;letter-spacing:.4px;text-transform:uppercase}
 .tbl th:first-child{border-radius:8px 0 0 0}.tbl th:last-child{border-radius:0 8px 0 0}
 .tbl td{padding:11px 12px;border-bottom:1px solid #eee8df;vertical-align:top}
@@ -42,7 +42,7 @@ textarea{resize:vertical;min-height:90px}
 .stat .n{font-size:30px;font-weight:900;color:#990000;line-height:1.1}
 .stat .t{font-size:12px;color:#777;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
 .steps{display:flex;gap:0;margin-bottom:26px}
-.step{flex:1;text-align:center;position:relative;padding-top:30px;font-size:12.5px;font-weight:600;color:#aaa}
+.step{flex:1;text-align:center;position:relative;padding-top:34px;font-size:14px;font-weight:600;color:#aaa}
 .step::before{content:attr(data-n);position:absolute;top:0;left:50%;transform:translateX(-50%);width:26px;height:26px;border-radius:50%;background:#e8e2d9;color:#888;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
 .step::after{content:"";position:absolute;top:13px;left:calc(50% + 16px);width:calc(100% - 32px);height:2px;background:#e8e2d9}
 .step:last-child::after{display:none}
@@ -63,12 +63,12 @@ textarea{resize:vertical;min-height:90px}
 .tabbar{display:flex;gap:6px;border-bottom:2px solid #eee5d8;margin-bottom:18px}
 .tab{padding:9px 18px;border:none;background:none;font-weight:700;font-size:14px;color:#888;border-bottom:3px solid transparent;margin-bottom:-2px}
 .tab.on{color:#990000;border-bottom-color:#990000}
-.demo-banner{background:#FFCC00;color:#3a2f00;text-align:center;font-size:13px;font-weight:700;padding:7px 14px}
-.cmt{background:#faf7f1;border:1px solid #ece4d6;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:13.5px}
+.demo-banner{background:#FFCC00;color:#3a2f00;text-align:center;font-size:15px;font-weight:700;padding:7px 14px}
+.cmt{background:#faf7f1;border:1px solid #ece4d6;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:15px}
 .cmt .who{font-weight:700;color:#990000;font-size:12.5px}
 .cmt .when{color:#999;font-size:11.5px;margin-left:8px;font-weight:400}
 .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
-.filters select,.filters input{width:auto;min-width:150px;padding:7px 10px;font-size:13px}
+.filters select,.filters input{width:auto;min-width:170px;padding:9px 12px;font-size:15px}
 @media print{.no-print{display:none!important}body{background:#fff}.card{border:none;box-shadow:none}}
 @media (max-width:720px){.steps{flex-wrap:wrap}.step{min-width:33%}}
 </style>
@@ -316,7 +316,7 @@ function RouteBox(props){
 function LoginScreen(props){
   function doLogin(){
     if (DEMO_MODE){
-      var name = prompt("Demo mode \u2014 enter a name to sign in as:","Mirwais Azizi");
+      var name = prompt("Preview mode \u2014 enter a name to sign in as:","Mirwais Azizi");
       if(!name) return;
       var email = prompt("Enter a USC email (use mirwaisa@usc.edu to preview the admin view):","mirwaisa@usc.edu");
       if(!email) return;
@@ -334,15 +334,15 @@ function LoginScreen(props){
     }).catch(function(e){ alert("Sign-in failed: "+e.message); });
   }
   return h("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#faf5ee 0%,#fff 50%,#fef8f0 100%)"}},
-    h("div",{style:{textAlign:"center",maxWidth:460,padding:"0 22px"}},
-      h("div",{style:{fontSize:13,fontWeight:800,letterSpacing:3,color:"#990000",marginBottom:8}},"USC SUZANNE DWORAK-PECK"),
-      h("div",{style:{fontSize:12,color:"#777",letterSpacing:2,marginBottom:22}},"SCHOOL OF SOCIAL WORK \u2022 ACADEMIC AFFAIRS"),
-      h("h1",{style:{fontSize:30,fontWeight:900,color:"#990000",lineHeight:1.15,marginBottom:8}},"Curriculum Change Proposal Portal"),
-      h("p",{style:{fontSize:14.5,color:"#555",marginBottom:6}},"Submit and track course, certificate, and program proposals for AY "+ACADEMIC_YEAR+"."),
-      h("p",{style:{fontSize:12,color:"#999",fontStyle:"italic",marginBottom:26}},"Replaces the shared intake spreadsheet \u2022 Feeds Curriculum Council & Curriculog submissions"),
+    h("div",{style:{textAlign:"center",maxWidth:620,padding:"0 24px"}},
+      h("div",{style:{fontSize:17,fontWeight:800,letterSpacing:3,color:"#990000",marginBottom:10}},"USC SUZANNE DWORAK-PECK"),
+      h("div",{style:{fontSize:15,color:"#777",letterSpacing:2,marginBottom:26}},"SCHOOL OF SOCIAL WORK \u2022 ACADEMIC AFFAIRS"),
+      h("h1",{style:{fontSize:42,fontWeight:900,color:"#990000",lineHeight:1.15,marginBottom:12}},"Curriculum Change Proposal Portal"),
+      h("p",{style:{fontSize:19,color:"#444",marginBottom:8}},"Submit and track course, certificate, and program proposals for AY "+ACADEMIC_YEAR+"."),
+      h("p",{style:{fontSize:14.5,color:"#999",fontStyle:"italic",marginBottom:30}},"Replaces the shared intake spreadsheet \u2022 Feeds Curriculum Council & Curriculog submissions"),
       h("div",{style:{height:3,background:"#FFCC00",width:90,margin:"0 auto 28px",borderRadius:2}}),
-      h("button",{className:"btn btn-primary",style:{padding:"13px 34px",fontSize:15},onClick:doLogin}, DEMO_MODE ? "Enter Demo Mode" : "Sign in with USC Google"),
-      h("p",{style:{fontSize:11.5,color:"#aaa",marginTop:18}}, DEMO_MODE ? "Firebase is not configured yet \u2014 the app runs with sample data so you can preview every screen." : "Restricted to @"+ALLOWED_DOMAIN+" accounts.")
+      h("button",{className:"btn btn-primary",style:{padding:"16px 44px",fontSize:18},onClick:doLogin}, DEMO_MODE ? "Preview the App" : "Sign in with USC Google"),
+      h("p",{style:{fontSize:14,color:"#999",marginTop:20}}, DEMO_MODE ? "The database is not connected yet \u2014 the app is showing sample data so you can preview every screen." : "Restricted to @"+ALLOWED_DOMAIN+" accounts.")
     )
   );
 }
@@ -350,8 +350,8 @@ function LoginScreen(props){
 /* ---------- HEADER ---------- */
 function Header(props){
   return h("div",{className:"no-print",style:{background:"#990000",color:"#fff",padding:"13px 22px",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}},
-    h("div",{style:{fontWeight:900,fontSize:16}},"Curriculum Change Proposal Portal"),
-    h("div",{style:{fontSize:12,opacity:.85}},"SDPSSW Academic Affairs \u2022 AY "+ACADEMIC_YEAR),
+    h("div",{style:{fontWeight:900,fontSize:18}},"Curriculum Change Proposal Portal"),
+    h("div",{style:{fontSize:13.5,opacity:.85}},"SDPSSW Academic Affairs \u2022 AY "+ACADEMIC_YEAR),
     h("div",{style:{flex:1}}),
     isAdmin(props.user) ? h("span",{className:"badge",style:{background:"#FFCC00",color:"#3a2f00"}},"ADMIN") : null,
     h("div",{style:{fontSize:13}}, props.user.displayName || props.user.email),
@@ -671,9 +671,9 @@ function App(){
     });
   },[]);
   if (user===undefined) return h("div",{style:{padding:60,textAlign:"center",color:"#999"}},"Loading\u2026");
-  if (!user) return h("div",null, DEMO_MODE?h("div",{className:"demo-banner"},"DEMO MODE \u2014 Firebase not configured. Sample data only; nothing is saved permanently."):null, h(LoginScreen,{onDemoLogin:setUser}));
+  if (!user) return h("div",null, DEMO_MODE?h("div",{className:"demo-banner"},"PREVIEW MODE \u2014 You are viewing sample data. Nothing is saved yet."):null, h(LoginScreen,{onDemoLogin:setUser}));
   return h("div",null,
-    DEMO_MODE?h("div",{className:"demo-banner"},"DEMO MODE \u2014 Firebase not configured. Sample data only; nothing is saved permanently."):null,
+    DEMO_MODE?h("div",{className:"demo-banner"},"PREVIEW MODE \u2014 You are viewing sample data. Nothing is saved yet."):null,
     h(Header,{user:user,onLogout:function(){ if(DEMO_MODE){setUser(null);} else {firebase.auth().signOut();} }}),
     h(Dashboard,{user:user})
   );
