@@ -93,6 +93,16 @@ var FIREBASE_CONFIG = {
 };
 var ADMIN_EMAILS = ["mirwaisa@usc.edu", "singhm@usc.edu"]; // Academic Affairs admins
 var ALLOWED_DOMAIN = "usc.edu"; // only USC Google accounts may sign in
+
+/* Optional email notifications on submission (EmailJS - see setup guide).
+   Leave as PASTE_ values to disable; the app works fully without them. */
+var EMAILJS = {
+  publicKey: "PASTE_EMAILJS_PUBLIC_KEY",
+  serviceId: "PASTE_EMAILJS_SERVICE_ID",
+  templateId: "PASTE_EMAILJS_TEMPLATE_ID",
+  notifyTo: "mirwaisa@usc.edu"  // comma-separated list, e.g. "mirwaisa@usc.edu, singhm@usc.edu"
+};
+var EMAIL_ENABLED = EMAILJS.publicKey.indexOf("PASTE") !== 0;
 var DEFAULT_YEAR = "2026-27";
 function nextYear(y){ var a = parseInt(y.slice(0,4),10)+1; return a + "-" + String(a+1).slice(2); }
 
@@ -184,6 +194,7 @@ function seedData(){
       proposedTitle:"", courseNumber:"", courseTitle:"",
       asyncUpdate:"No", asyncSemester:"", asyncDescription:"", asyncSupport:"",
       description:"", rationale:"", status:"submitted",
+      coLeads:"", videosCount:"", comfort:"", priority:"", adminNotes:"",
       production:{}, comments:[]
     }, o);
   }
@@ -252,16 +263,17 @@ var DB = (function(){
 function isAdmin(user){ return !!user && ADMIN_EMAILS.indexOf((user.email||"").toLowerCase()) >= 0; }
 function fmtDate(ts){ if(!ts) return ""; var d = new Date(ts); return (d.getMonth()+1)+"/"+d.getDate()+"/"+d.getFullYear(); }
 function esc(s){ return (s==null?"":String(s)); }
+function escHtml(s){ return esc(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 
 /* ---------- CSV EXPORT (matches Academic Affairs intake columns) ---------- */
 function exportCSV(rows, label){
-  var head = ["Academic Year","Name","Email","Role","Program","Proposal Type","Course Number","Course/Proposal Title","New or Revision","If Revision: Minor or Major","If New: Proposed Title","Async Update?","Async Target Semester","Curric Council Review?","University Review?","Status","Description of Proposal/Revisions","Description of Async Changes & Support Needed","Rationale","Submitted","Last Updated"];
-  function q(v){ v = esc(v).replace(/"/g,'""'); return '"'+v+'"'; }
+  var head = ["Academic Year","Name","Email","Role","Co-Leads","Program","Proposal Type","Course Number","Course/Proposal Title","New or Revision","If Revision: Minor or Major","If New: Proposed Title","Async Update?","Async Target Semester","Approx. Videos","Lead Comfort","Curric Council Review?","University Review?","Priority","Status","Description of Proposal/Revisions","Description of Async Changes & Support Needed","Rationale","Internal Notes (AA)","Submitted","Last Updated"];
+  function q(v){ v = esc(v); if(/^[=+\-@\t\r]/.test(v)) v = "'" + v; v = v.replace(/"/g,'""'); return '"'+v+'"'; }
   var lines = [head.map(q).join(",")];
   rows.forEach(function(p){
     var r = computeRoute(p);
     function yn(v){ return v==="yes"?"Yes":(v==="no"?"No":"AA to confirm"); }
-    lines.push([p.academicYear,p.submitterName,p.submitterEmail,p.role,p.program,p.proposalType,p.courseNumber,p.courseTitle||p.proposedTitle,p.changeType,p.revisionScope,p.proposedTitle,p.asyncUpdate,p.asyncSemester,yn(r.council),yn(r.university),statusOf(p.status).label,p.description,(esc(p.asyncDescription)+(p.asyncSupport?" | Support: "+p.asyncSupport:"")),p.rationale,fmtDate(p.createdAt),fmtDate(p.updatedAt)].map(q).join(","));
+    lines.push([p.academicYear,p.submitterName,p.submitterEmail,p.role,p.coLeads,p.program,p.proposalType,p.courseNumber,p.courseTitle||p.proposedTitle,p.changeType,p.revisionScope,p.proposedTitle,p.asyncUpdate,p.asyncSemester,p.videosCount,p.comfort,yn(r.council),yn(r.university),p.priority,statusOf(p.status).label,p.description,(esc(p.asyncDescription)+(p.asyncSupport?" | Support: "+p.asyncSupport:"")),p.rationale,p.adminNotes,fmtDate(p.createdAt),fmtDate(p.updatedAt)].map(q).join(","));
   });
   var blob = new Blob(["\uFEFF"+lines.join("\r\n")], {type:"text/csv;charset=utf-8"});
   var a = document.createElement("a");
@@ -270,24 +282,50 @@ function exportCSV(rows, label){
   a.click();
 }
 
+/* ---------- EMAIL NOTIFICATION (optional, fire-and-forget) ---------- */
+function notifySubmission(p){
+  if (!EMAIL_ENABLED) return;
+  try {
+    fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        service_id: EMAILJS.serviceId,
+        template_id: EMAILJS.templateId,
+        user_id: EMAILJS.publicKey,
+        template_params: {
+          to_email: EMAILJS.notifyTo,
+          submitter: p.submitterName + " (" + p.submitterEmail + ")",
+          proposal: ((p.courseNumber? p.courseNumber+" ":"") + (p.courseTitle || p.proposedTitle || p.proposalType)),
+          program: p.program,
+          change: p.changeType + (p.revisionScope? " - "+p.revisionScope : ""),
+          year: p.academicYear,
+          description: (p.description||"").slice(0,500)
+        }
+      })
+    }).catch(function(e){ console.warn("Notification email failed (submission was still saved):", e); });
+  } catch(e){ console.warn("Notification email failed (submission was still saved):", e); }
+}
+
 /* ---------- PRINT VIEW ---------- */
 function printProposal(p){
   var r = computeRoute(p);
   function yn(v){ return v==="yes"?"Yes":(v==="no"?"No":"To be confirmed by Academic Affairs"); }
-  function row(k,v){ return v ? "<tr><td style='font-weight:600;padding:6px 10px;border:1px solid #ddd;width:220px;vertical-align:top'>"+k+"</td><td style='padding:6px 10px;border:1px solid #ddd;white-space:pre-wrap'>"+esc(v)+"</td></tr>" : ""; }
+  function row(k,v){ return v ? "<tr><td style='font-weight:600;padding:6px 10px;border:1px solid #ddd;width:220px;vertical-align:top'>"+escHtml(k)+"</td><td style='padding:6px 10px;border:1px solid #ddd;white-space:pre-wrap'>"+escHtml(v)+"</td></tr>" : ""; }
   var w = window.open("","_blank","width=900,height=700");
-  w.document.write("<html><head><title>Curriculum Proposal \u2014 "+esc(p.courseNumber||p.proposedTitle||p.proposalType)+"</title>"+
+  w.document.write("<html><head><title>Curriculum Proposal \u2014 "+escHtml(p.courseNumber||p.proposedTitle||p.proposalType)+"</title>"+
     "<style>body{font-family:Arial,sans-serif;color:#222;padding:30px;font-size:13px}h1{color:#990000;font-size:20px;margin-bottom:2px}h2{font-size:13px;color:#666;font-weight:400;margin-bottom:18px}table{border-collapse:collapse;width:100%}</style></head><body>"+
-    "<h1>USC Suzanne Dworak-Peck School of Social Work</h1><h2>Academic Affairs \u2014 Curriculum Change Proposal \u2022 AY "+esc(p.academicYear)+"</h2><table>"+
+    "<h1>USC Suzanne Dworak-Peck School of Social Work</h1><h2>Academic Affairs \u2014 Curriculum Change Proposal \u2022 AY "+escHtml(p.academicYear)+"</h2><table>"+
     row("Status", statusOf(p.status).label)+
     row("Submitted by", esc(p.submitterName)+" ("+esc(p.submitterEmail)+")")+
-    row("Role", p.role)+ row("Program", p.program)+ row("Proposal type", p.proposalType)+
+    row("Role", p.role)+ row("Co-leads", p.coLeads)+ row("Program", p.program)+ row("Proposal type", p.proposalType)+
     row("Course", (esc(p.courseNumber)+" "+esc(p.courseTitle)).trim())+
     row("New or revision", p.changeType)+ row("Revision scope", p.revisionScope)+
     row("Proposed title (if new)", p.proposedTitle)+
     row("Description of proposal / revisions", p.description)+
     row("Rationale", p.rationale)+
     row("Async update needed", p.asyncUpdate)+ row("Async target semester", p.asyncSemester)+
+    row("Lead comfort with revisions", p.comfort)+
     row("Async changes & support needed", esc(p.asyncDescription)+(p.asyncSupport?"\nSupport: "+esc(p.asyncSupport):""))+
     row("Curriculum Council review", yn(r.council))+
     row("University (UCOC) review", yn(r.university))+
@@ -375,10 +413,11 @@ function blankProposal(user, year){
   return {
     academicYear: year || DEFAULT_YEAR, status:"draft",
     submitterName:user.displayName||"", submitterEmail:user.email||"", submitterUid:user.uid,
-    role:"", program:"", proposalType:"", changeType:"", revisionScope:"",
+    role:"", program:"", proposalType:"", changeType:"", revisionScope:"", coLeads:"",
     courseNumber:"", courseTitle:"", proposedTitle:"",
     description:"", rationale:"",
     asyncUpdate:"", asyncSemester:"", asyncDescription:"", asyncSupport:"",
+    videosCount:"", comfort:"", priority:"", adminNotes:"",
     production:{}, comments:[]
   };
 }
@@ -387,29 +426,43 @@ function Wizard(props){
   var st = React.useState(props.initial); var p = st[0], setP = st[1];
   var stepSt = React.useState(0); var step = stepSt[0], setStep = stepSt[1];
   var savingSt = React.useState(false); var saving = savingSt[0], setSaving = savingSt[1];
+  var triedSt = React.useState(false); var tried = triedSt[0], setTried = triedSt[1];
   function up(k,v){ var n = Object.assign({},p); n[k]=v; setP(n); }
   var isCourse = p.proposalType==="Course";
   var isNew = p.changeType==="New";
   var isRev = p.changeType==="Revision";
 
   var stepNames = ["Who & What","Change Details","Async Production","Review & Submit"];
-  function valid(i){
-    if(i===0) return p.submitterName && p.role && p.program && p.proposalType;
-    if(i===1){
-      if(!p.changeType) return false;
-      if(p.changeType==="No Change This Year") return true;
-      if(isRev && !p.revisionScope) return false;
-      if(isNew && !p.proposedTitle) return false;
-      if(isCourse && !p.courseNumber) return false;
-      return !!p.description;
+  function missing(i){
+    var m = [];
+    if(i===0){
+      if(!p.submitterName) m.push("Your name");
+      if(!p.role) m.push("Your role");
+      if(!p.program) m.push("Program");
+      if(!p.proposalType) m.push("What this proposal concerns");
     }
-    if(i===2) return !!p.asyncUpdate && (p.asyncUpdate==="No" || (p.asyncSemester && p.asyncDescription));
-    return true;
+    if(i===1){
+      if(!p.changeType){ m.push("New or revision"); return m; }
+      if(p.changeType==="No Change This Year"){ if(isCourse && !p.courseNumber) m.push("Course number"); return m; }
+      if(isRev && !p.revisionScope) m.push("Scope of revision");
+      if(isNew && !p.proposedTitle) m.push("Proposed title");
+      if(isCourse && !p.courseNumber) m.push("Course number");
+      if(!p.description) m.push("Description of the proposal or revisions");
+    }
+    if(i===2){
+      if(!p.asyncUpdate) m.push("Whether async (VAC) updates are needed");
+      else if(p.asyncUpdate==="Yes"){
+        if(!p.asyncSemester) m.push("Target implementation semester");
+        if(!p.asyncDescription) m.push("Description of the async changes");
+      }
+    }
+    return m;
   }
+  function valid(i){ return missing(i).length===0; }
   function save(status){
     setSaving(true);
     var copy = Object.assign({},p,{status:status});
-    DB.save(copy).then(function(){ setSaving(false); props.onDone(status); })
+    DB.save(copy).then(function(){ setSaving(false); if(status==="submitted") notifySubmission(copy); props.onDone(status); })
       .catch(function(e){ setSaving(false); alert("Save failed: "+e.message); });
   }
   var route = computeRoute(p);
@@ -423,6 +476,8 @@ function Wizard(props){
         h(Field,{label:"Your role on this proposal",required:true}, h(Sel,{value:p.role,options:ROLES,onChange:function(v){up("role",v);}})),
         h(Field,{label:"Program",required:true}, h(Sel,{value:p.program,options:PROGRAMS,onChange:function(v){up("program",v);}}))
       ),
+      h(Field,{label:"Co-leads on this proposal (optional)",hint:"If others are co-leading, list their names so Academic Affairs can keep everyone in the loop."},
+        h("input",{value:p.coLeads,onChange:function(e){up("coLeads",e.target.value);},placeholder:"e.g., Kim Goodman; Michael Hurlburt"})),
       h(Field,{label:"What does this proposal concern?",required:true,hint:"Pick the closest category \u2014 Academic Affairs can re-classify if needed."},
         h(Sel,{value:p.proposalType,options:PROPOSAL_TYPES,onChange:function(v){up("proposalType",v);}}))
     );
@@ -430,7 +485,7 @@ function Wizard(props){
     body = h("div",null,
       h(Field,{label:"Is this new, or a revision to something existing?",required:true},
         h(Sel,{value:p.changeType,options:CHANGE_TYPES,onChange:function(v){up("changeType",v);}})),
-      p.changeType==="No Change This Year" ? h("div",{className:"route-box route-no"},"Noted \u2014 this records that the course/certificate has no changes for "+ACADEMIC_YEAR+". You can submit from the final step.") : null,
+      p.changeType==="No Change This Year" ? h("div",{className:"route-box route-no"},"Noted \u2014 this records that the course/certificate has no changes for AY "+p.academicYear+". You can submit from the final step.") : null,
       isRev ? h(Field,{label:"Scope of revision",required:true,hint:"Minor: readings, unit order, assignment weights. Major: outcomes, content focus, structure, units, title, or prerequisites."},
         h(Sel,{value:p.revisionScope,options:SCOPES,onChange:function(v){up("revisionScope",v);}})) : null,
       isNew ? h(Field,{label:"Proposed title",required:true}, h("input",{value:p.proposedTitle,onChange:function(e){up("proposedTitle",e.target.value);},placeholder:"e.g., Community Organizing for Justice and Empowerment"})) : null,
@@ -452,6 +507,12 @@ function Wizard(props){
           h(Sel,{value:p.asyncSemester,options:SEMESTERS,onChange:function(v){up("asyncSemester",v);}})),
         h(Field,{label:"Describe the async changes",required:p.asyncUpdate==="Yes",hint:"Which modules/videos, extent of re-filming, what stays, what goes."},
           h("textarea",{value:p.asyncDescription,onChange:function(e){up("asyncDescription",e.target.value);}})),
+        h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}},
+          h(Field,{label:"Approx. number of videos to update or create",hint:"A rough estimate is fine (5\u20137 minute videos)."},
+            h("input",{value:p.videosCount,onChange:function(e){up("videosCount",e.target.value);},placeholder:"e.g., 8"})),
+          h(Field,{label:"Your comfort level making these revisions"},
+            h(Sel,{value:p.comfort,options:["Comfortable on my own","Would like some support","Need significant support"],onChange:function(v){up("comfort",v);}}))
+        ),
         h(Field,{label:"Support needed",hint:"e.g., formal studio recording, instructional design support, CDM walkthrough."},
           h("textarea",{value:p.asyncSupport,style:{minHeight:60},onChange:function(e){up("asyncSupport",e.target.value);}}))
       ) : null
@@ -479,12 +540,20 @@ function Wizard(props){
         return h("div",{key:n,className:"step"+(i===step?" active":(i<step?" done":"")),"data-n":i+1},n);
       })),
       body,
-      h("div",{style:{display:"flex",gap:10,marginTop:24,justifyContent:"space-between"}},
+      tried && missing(step).length ? h("div",{className:"route-box route-yes",style:{marginTop:18}},
+        h("div",{style:{fontWeight:800,fontSize:15}},"To continue, please complete:"),
+        h("ul",{style:{paddingLeft:20,marginTop:4}}, missing(step).map(function(m,i){ return h("li",{key:i},m); }))
+      ) : null,
+      h("div",{style:{display:"flex",gap:10,marginTop:18,justifyContent:"space-between"}},
         h("div",null, step>0 ? h("button",{className:"btn btn-ghost",onClick:function(){setStep(step-1);}},"\u2190 Back") : null),
         h("div",{style:{display:"flex",gap:10}},
           h("button",{className:"btn btn-secondary",disabled:saving,onClick:function(){save("draft");}},"Save Draft"),
-          step<3 ? h("button",{className:"btn btn-primary",disabled:!valid(step),onClick:function(){setStep(step+1);}},"Continue \u2192")
-                 : h("button",{className:"btn btn-primary",disabled:saving||!valid(0)||!valid(1)||!valid(2),onClick:function(){save("submitted");}}, saving?"Submitting\u2026":"Submit Proposal")
+          step<3 ? h("button",{className:"btn btn-primary",onClick:function(){ if(valid(step)){ setTried(false); setStep(step+1); } else { setTried(true); } }},"Continue \u2192")
+                 : h("button",{className:"btn btn-primary",disabled:saving,onClick:function(){
+                     var all = missing(0).concat(missing(1)).concat(missing(2));
+                     if(all.length){ setTried(true); alert("Almost there \u2014 please complete:\n\u2022 "+all.join("\n\u2022 ")); return; }
+                     save("submitted");
+                   }}, saving?"Submitting\u2026":"Submit Proposal")
         )
       )
     )
@@ -508,6 +577,7 @@ function Detail(props){
   var prod = p.production||{};
   var prodDone = PRODUCTION_STEPS.filter(function(s){return prod[s.id];}).length;
   var canEdit = admin || (p.submitterEmail===user.email && (p.status==="draft"||p.status==="returned"));
+  var canDelete = admin || (p.submitterEmail===user.email && p.status==="draft");
 
   return h("div",{className:"modal-bg",onClick:function(e){ if(e.target===e.currentTarget) props.onClose(); }},
     h("div",{className:"modal"},
@@ -522,12 +592,15 @@ function Detail(props){
         h("tbody",null,
           row("Submitted by", p.submitterName+" ("+p.submitterEmail+")"),
           row("Role", p.role),
+          row("Co-leads", p.coLeads),
           row("Change", p.changeType + (p.revisionScope? " \u2014 "+p.revisionScope:"")),
           row("Proposed title", p.proposedTitle),
           row("Description", p.description),
           row("Rationale", p.rationale),
           row("Async update", p.asyncUpdate + (p.asyncSemester? " \u2014 target "+p.asyncSemester:"")),
           row("Async details", p.asyncDescription),
+          row("Approx. videos to update/create", p.videosCount),
+          row("Lead comfort with revisions", p.comfort),
           row("Support needed", p.asyncSupport),
           row("Curriculum Council", yn(route.council)),
           row("University (UCOC)", yn(route.university))
@@ -542,7 +615,17 @@ function Detail(props){
             h("select",{value:p.status,onChange:function(e){patch({status:e.target.value});}},
               STATUSES.map(function(s){ return h("option",{key:s.id,value:s.id},s.label); }))
           ),
+          h("div",{style:{width:120}},
+            h("label",{className:"lbl",style:{margin:"0 0 4px"}},"Priority"),
+            h("input",{type:"number",min:1,value:p.priority||"",placeholder:"\u2014",onChange:function(e){patch({priority: e.target.value? parseInt(e.target.value,10):null});}})),
+          h("div",{style:{width:140}},
+            h("label",{className:"lbl",style:{margin:"0 0 4px"}},"# of Videos"),
+            h("input",{type:"number",min:0,value:p.videosCount||"",placeholder:"\u2014",onChange:function(e){patch({videosCount: e.target.value? parseInt(e.target.value,10):null});}})),
           h("button",{className:"btn btn-ghost",onClick:function(){ if(confirm("Delete this proposal? This cannot be undone.")) { DB.remove(p.id); props.onClose(); } }},"Delete")
+        ),
+        h("div",{style:{marginTop:12}},
+          h("label",{className:"lbl",style:{margin:"0 0 4px"}},"Internal notes (Academic Affairs)"),
+          h("textarea",{style:{minHeight:56},defaultValue:p.adminNotes||"",onBlur:function(e){ if(e.target.value!==(p.adminNotes||"")) patch({adminNotes:e.target.value}); },placeholder:"Status notes, follow-ups, referral source\u2026"})
         ),
         p.asyncUpdate==="Yes" || p.asyncUpdate==="Unsure" || prodDone>0 ? h("div",{style:{marginTop:14}},
           h("div",{style:{fontWeight:700,fontSize:13,marginBottom:4}},"Async Production Tracker ("+prodDone+"/"+PRODUCTION_STEPS.length+")"),
@@ -570,6 +653,7 @@ function Detail(props){
 
       h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end"}},
         canEdit ? h("button",{className:"btn btn-secondary",onClick:function(){props.onEdit(p);}},"Edit Proposal") : null,
+        !admin && canDelete ? h("button",{className:"btn btn-ghost",onClick:function(){ if(confirm("Delete this draft? This cannot be undone.")) { DB.remove(p.id); props.onClose(); } }},"Delete Draft") : null,
         h("button",{className:"btn btn-gold",onClick:function(){printProposal(p);}},"Print / PDF"),
         h("button",{className:"btn btn-ghost",onClick:props.onClose},"Close")
       )
@@ -596,6 +680,13 @@ function Dashboard(props){
 
   var mine = yearRows.filter(function(r){ return r.submitterEmail === user.email; });
   var base = (view==="mine") ? mine : yearRows;
+  base = base.slice().sort(function(x,y){
+    var px = parseInt(x.priority,10), py = parseInt(y.priority,10);
+    var hx = !isNaN(px), hy = !isNaN(py);
+    if (hx && hy && px!==py) return px-py;
+    if (hx !== hy) return hx ? -1 : 1;
+    return (y.updatedAt||0)-(x.updatedAt||0);
+  });
   var visible = base.filter(function(r){
     if (!admin && view==="all" && r.status==="draft" && r.submitterEmail!==user.email) return false;
     if (fProg && r.program!==fProg) return false;
@@ -646,8 +737,11 @@ function Dashboard(props){
       stats.map(function(s){ return h("div",{key:s.t,className:"stat"}, h("div",{className:"n"},s.n), h("div",{className:"t"},s.t)); })
     ) : null,
 
+    admin ? h("div",{style:{fontSize:14,color:"#777",margin:"-8px 0 16px"}},
+      "By program: " + PROGRAMS.map(function(pg){ var n = yearRows.filter(function(r){return r.program===pg && r.status!=="draft";}).length; return n? pg+" "+n : null; }).filter(Boolean).join(" \u2022 ")
+    ) : null,
     admin ? h("div",{className:"tabbar"},
-      h("button",{className:"tab"+(view==="all"?" on":""),onClick:function(){setView("all");}},"All Proposals ("+rows.length+")"),
+      h("button",{className:"tab"+(view==="all"?" on":""),onClick:function(){setView("all");}},"All Proposals ("+yearRows.length+")"),
       h("button",{className:"tab"+(view==="mine"?" on":""),onClick:function(){setView("mine");}},"Mine ("+mine.length+")")
     ) : null,
 
@@ -672,16 +766,19 @@ function Dashboard(props){
       h("table",{className:"tbl"},
         h("thead",null,h("tr",null,
           h("th",null,"Course / Proposal"), h("th",null,"Program"), h("th",null,"Type"),
-          h("th",null,"Change"), admin?h("th",null,"Submitter"):null, h("th",null,"Year"), h("th",null,"Async"),
+          h("th",null,"Change"), admin?h("th",null,"Submitter"):null, admin?h("th",null,"Pri"):null, h("th",null,"Year"), h("th",null,"Async"),
           h("th",null,"Status"), h("th",null,"Updated"))),
         h("tbody",null, visible.map(function(r){
           var prod = r.production||{}; var pd = PRODUCTION_STEPS.filter(function(s){return prod[s.id];}).length;
           return h("tr",{key:r.id,onClick:function(){setDet(r.id);}},
-            h("td",{style:{fontWeight:600}}, (r.courseNumber? r.courseNumber+" ":"")+(r.courseTitle||r.proposedTitle||r.proposalType)),
+            h("td",{style:{fontWeight:600}},
+              r.priority ? h("span",{className:"badge",style:{background:"#990000",color:"#fff",marginRight:7,fontSize:11}},"P"+r.priority) : null,
+              (r.courseNumber? r.courseNumber+" ":"")+(r.courseTitle||r.proposedTitle||r.proposalType)),
             h("td",null,r.program),
             h("td",null,r.proposalType),
             h("td",null, r.changeType + (r.revisionScope? " \u00B7 "+r.revisionScope.split(" ")[0]:"")),
             admin?h("td",null,r.submitterName):null,
+            admin?h("td",{style:{fontWeight:700,color:"#990000"}}, r.priority||"\u2014"):null,
             h("td",{style:{whiteSpace:"nowrap"}}, r.academicYear||DEFAULT_YEAR),
             h("td",null, r.asyncUpdate==="Yes" ? (pd>0 ? pd+"/"+PRODUCTION_STEPS.length : "Yes") : (r.asyncUpdate||"\u2014")),
             h("td",null,h(Badge,{status:r.status})),
